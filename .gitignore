@@ -1,0 +1,11 @@
+# Ignorar dados do banco e ambientes virtuais
+data/
+.venv/
+__pycache__/
+backups/
+
+# Ignorar variáveis de ambiente
+.env
+
+# Ignorar CSVs gerados localmente
+*.csv

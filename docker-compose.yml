@@ -1,0 +1,12 @@
+version: '3.8'
+
+services:
+  mongodb:
+    image: mongo:6.0
+    container_name: clean_shark_mongo
+    ports:
+      - "27017:27017" # Isso permite que o seu Notebook local acesse o banco!
+    volumes:
+      - ./data/mongo_db:/data/db
+      - ./backups:/backups
+    restart: unless-stopped
