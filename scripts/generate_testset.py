@@ -44,7 +44,14 @@ jina_embeddings = HuggingFaceEmbeddings(
 )
 
 print("⚙️ Montando o Gerador do Ragas...")
-generator = TestsetGenerator.from_langchain(groq_llm, jina_embeddings)
+
+generator = TestsetGenerator.from_langchain(
+    generator_llm=groq_llm,
+    critic_llm=groq_llm,
+    embeddings=jina_embeddings
+)
+
+print("✅ Gerador montado com sucesso!")
 
 # ==============================================================================
 # 3. CARREGAR DADOS DO MONGODB (CLEAN_SHARK)
@@ -73,15 +80,13 @@ for doc in db.rich_commits.find({"project": target_project}).limit(30):
 print(f"✅ Total de documentos carregados: {len(docs_langchain)}")
 
 # ==============================================================================
-# 4. GERAR O TESTSET (NOVA API BASEADA EM GRAFOS)
+# 4. GERAR O TESTSET
 # ==============================================================================
-print("🧠 RAGAS está analisando os textos e gerando o Grafo de Conhecimento...")
 print("⏳ Gerando perguntas sintéticas... (Isso pode demorar dependendo da Groq)")
 
-# A nova função não exige mais o parâmetro 'distributions'
 testset = generator.generate_with_langchain_docs(
     docs_langchain,
-    testset_size=20 # Reduzi para 20 inicialmente para testar os limites de taxa (Rate Limits) da Groq
+    test_size=5 # Reduzi para 5 inicialmente para testar os limites de taxa (Rate Limits) da Groq
 )
 
 # ==============================================================================
