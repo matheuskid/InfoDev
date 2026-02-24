@@ -12,13 +12,15 @@ O **InfoDev** é um ecossistema inteligente projetado para otimizar a recuperaç
 
 A organização de pastas reflete a separação entre ambiente isolado, persistência e processamento de dados:
 
-* **📂 `.venv/**`: Ambiente virtual Python para isolamento de dependências.
-* **📦 `backups/**`: Armazena o backup do banco de dados `clean_shark_backup.archive`.
-* **🗄️ `data/mongo_db/**`: Volume de dados para persistência (MongoDB).
-* **📜 `scripts/**`: Utilitários para manipulação e preparação de dados.
-* **💻 `src/**`: Código-fonte principal da aplicação e lógica da arquitetura.
-* **🐳 `docker-compose.yml**`: Configuração dos containers para o MongoDB.
-* **📋 `requirements.txt**`: Bibliotecas necessárias (LangChain, PyMongo, etc.).
+* 📂 `.venv/`: Ambiente virtual Python para isolamento de dependências.
+* 📦 `backups/`: Armazena o backup do banco de dados `clean_shark_backup.archive`.
+* 🗄️ `data/mongo_db/`: Volume de dados para persistência (MongoDB).
+* 📜 `scripts/`: Utilitários para manipulação e preparação de dados.
+* 💻 `src/`: Código-fonte principal da aplicação e lógica da arquitetura.
+* 🐳 `docker-compose.yml`: Configuração dos containers para o MongoDB.
+* 📋 `requirements.txt`: Bibliotecas necessárias (LangChain, PyMongo, etc.).
+
+⚠️ Nota sobre o Git: As pastas 📦 `backups/` e 🗄️ `data/mongo_db/` estão listadas no .gitignore para evitar o versionamento de arquivos pesados ou locais. Certifique-se de criá-las manualmente na raiz do projeto antes de iniciar a execução ou restaurar os backups.
 
 ## 🛠️ Metodologia de Desenvolvimento
 
