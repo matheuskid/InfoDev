@@ -6,13 +6,14 @@ from langchain_core.documents import Document
 
 from langchain_groq import ChatGroq
 from langchain_huggingface import HuggingFaceEmbeddings
+from langchain.text_splitter import RecursiveCharacterTextSplitter
 
 # ==============================================================================
 # IMPORTAÇÕES ATUALIZADAS DO RAGAS (v0.4+)
 # ==============================================================================
 from ragas.testset import TestsetGenerator
-from ragas.llms import LangchainLLMWrapper
-from ragas.embeddings import LangchainEmbeddingsWrapper
+from ragas.run_config import RunConfig
+from ragas.testset.evolutions import simple
 
 # 1. CARREGAR VARIÁVEIS DE AMBIENTE
 load_dotenv(override=True)
@@ -27,9 +28,9 @@ MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017/")
 # ==============================================================================
 print("🤖 Inicializando modelos...")
 
-# LLM da Groq (Llama 3 70B)
+# LLM da Groq
 groq_llm = ChatGroq(
-    model_name="openai/gpt-oss-120b",
+    model_name="llama-3.3-70b-versatile",
     temperature=0.1 
 )
 
@@ -80,13 +81,41 @@ for doc in db.rich_commits.find({"project": target_project}).limit(30):
 print(f"✅ Total de documentos carregados: {len(docs_langchain)}")
 
 # ==============================================================================
+# CHUNKING
+# ==============================================================================
+print("✂️ Quebrando documentos em Chunks...")
+
+# Configura o cortador para pedaços de no máximo 1000 caracteres
+text_splitter = RecursiveCharacterTextSplitter(
+    chunk_size=1000,
+    chunk_overlap=200 # Mantém 200 caracteres do pedaço anterior para não perder o contexto
+)
+
+# Substitui a lista de documentos inteiros pela lista de pedaços
+docs_langchain = text_splitter.split_documents(docs_langchain)
+
+print(f"🧩 Após o corte, temos {len(docs_langchain)} pedaços de documento prontos para o Ragas!")
+
+# ==============================================================================
 # 4. GERAR O TESTSET
 # ==============================================================================
 print("⏳ Gerando perguntas sintéticas... (Isso pode demorar dependendo da Groq)")
 
+# Criamos uma regra: Trabalhe com apenas 1 "trabalhador" (sem requisições simultâneas)
+# e se der erro de API, tente de novo 5 vezes com pequenos intervalos.
+configuracao_lenta = RunConfig(
+    max_workers=1, 
+    max_retries=5
+)
+
+print("⏳ RAGAS operando em modo de segurança (1 requisição por vez)...")
 testset = generator.generate_with_langchain_docs(
-    docs_langchain,
-    test_size=5 # Reduzi para 5 inicialmente para testar os limites de taxa (Rate Limits) da Groq
+    documents=docs_langchain,
+    test_size=1, 
+    # Forçamos 100% das perguntas a serem do tipo "Simples" (Menos tokens e requisições)
+    distributions={simple: 1.0},
+    # Injetamos o freio de mão no Ragas
+    run_config=configuracao_lenta 
 )
 
 # ==============================================================================
