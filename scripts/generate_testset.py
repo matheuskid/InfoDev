@@ -13,7 +13,7 @@ from langchain.text_splitter import RecursiveCharacterTextSplitter
 # ==============================================================================
 from ragas.testset import TestsetGenerator
 from ragas.run_config import RunConfig
-from ragas.testset.evolutions import simple
+from ragas.testset.evolutions import simple, reasoning, multi_context
 
 # 1. CARREGAR VARIÁVEIS DE AMBIENTE
 load_dotenv(override=True)
@@ -35,13 +35,16 @@ groq_llm = ChatGroq(
 )
 
 # Embeddings Locais (Jina)
-print("📥 Carregando modelo de embeddings da Jina AI...")
+print("📥 Loading Jina Embeddings v3...")
 jina_embeddings = HuggingFaceEmbeddings(
     model_name="jinaai/jina-embeddings-v3",
     model_kwargs={
         'device': 'cpu',
         'trust_remote_code': True 
-    }
+    },
+    # THE FIX: Forces Jina to process chunks one by one.
+    # It takes milliseconds longer, but completely avoids the PyTorch mismatch crash!
+    encode_kwargs={'batch_size': 1} 
 )
 
 print("⚙️ Montando o Gerador do Ragas...")
@@ -87,8 +90,8 @@ print("✂️ Quebrando documentos em Chunks...")
 
 # Configura o cortador para pedaços de no máximo 1000 caracteres
 text_splitter = RecursiveCharacterTextSplitter(
-    chunk_size=1000,
-    chunk_overlap=200 # Mantém 200 caracteres do pedaço anterior para não perder o contexto
+    chunk_size=500,
+    chunk_overlap=100 # Mantém 200 caracteres do pedaço anterior para não perder o contexto
 )
 
 # Substitui a lista de documentos inteiros pela lista de pedaços
@@ -97,35 +100,31 @@ docs_langchain = text_splitter.split_documents(docs_langchain)
 print(f"🧩 Após o corte, temos {len(docs_langchain)} pedaços de documento prontos para o Ragas!")
 
 # ==============================================================================
-# 4. GERAR O TESTSET
+# 4. GENERATE TESTSET (NO BRAKES)
 # ==============================================================================
-print("⏳ Gerando perguntas sintéticas... (Isso pode demorar dependendo da Groq)")
+# Restoring the complex question types
+distributions = {
+    simple: 0.4,
+    reasoning: 0.3,
+    multi_context: 0.3
+}
 
-# Criamos uma regra: Trabalhe com apenas 1 "trabalhador" (sem requisições simultâneas)
-# e se der erro de API, tente de novo 5 vezes com pequenos intervalos.
-configuracao_lenta = RunConfig(
-    max_workers=1, 
-    max_retries=5
-)
+# Set your target size here. 50 is a great baseline for testing the final system.
+TARGET_QUESTIONS = 10 
 
-print("⏳ RAGAS operando em modo de segurança (1 requisição por vez)...")
+print(f"🚀 Generating {TARGET_QUESTIONS} synthetic questions at maximum speed...")
 testset = generator.generate_with_langchain_docs(
     documents=docs_langchain,
-    test_size=1, 
-    # Forçamos 100% das perguntas a serem do tipo "Simples" (Menos tokens e requisições)
-    distributions={simple: 1.0},
-    # Injetamos o freio de mão no Ragas
-    run_config=configuracao_lenta 
+    test_size=TARGET_QUESTIONS,
+    distributions=distributions
+    # Notice: run_config is gone! We let Ragas run fully asynchronous now.
 )
 
 # ==============================================================================
-# 5. SALVAR RESULTADOS
+# 5. EXPORT
 # ==============================================================================
 df = testset.to_pandas()
-output_file = "ragas_testset_tcc.csv"
-df.to_csv(output_file, index=False)
+df.to_csv("ragas_testset_tcc.csv", index=False)
 
-print(f"\n🎉 Sucesso! Testset gerado e salvo em '{output_file}'!")
-print("\nUma espiada nas perguntas geradas:")
-# O novo dataframe costuma ter as colunas 'user_input' (a pergunta) e 'reference' (o gabarito)
-print(df.head())
+print(f"\n🎉 SUCCESS! Full dataset saved to 'ragas_testset_tcc.csv'!")
+print(df[["question", "evolution_type"]].head())
