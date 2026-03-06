@@ -3,7 +3,7 @@ from typing import Annotated, List, TypedDict
 
 
 class GraphState(TypedDict):
-    user_query: str                   # User's original question
+    user_query: str              # User's original question
     plan: List[str]              # List of steps (e.g., ["Search Law", "Search Hospital Rule"])
     current_step: str            # The specific step currently being processed
     
