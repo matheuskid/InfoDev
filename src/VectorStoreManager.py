@@ -11,9 +11,9 @@ from Config import Config
 class VectorStoreManager:
     """
     Classe utilitária para carregar, processar e gerenciar VectorStores a partir do MongoDB.
+    Focada em alta performance usando BaseRetriever local.
     """
     def __init__(self, persist_directory, collection_name):
-        # O diretório local de PDFs foi removido da inicialização
         self.persist_directory = persist_directory
         self.collection_name = collection_name
         
@@ -60,7 +60,7 @@ class VectorStoreManager:
             if text:
                 raw_documents.append(Document(
                     page_content=text,
-                    # Mantendo os metadados em inglês conforme padrão estrutural
+                    # Mantendo os metadados em inglês
                     metadata={"source": f"Issue_{doc.get('original_id', 'unknown')}", "type": "issue"}
                 ))
                 
@@ -74,13 +74,13 @@ class VectorStoreManager:
                     metadata={"source": f"Commit_{doc.get('hash', 'unknown')}", "type": "commit"}
                 ))
 
+        # 3. Extração dos E-mails
         print(f"🔍 Buscando e-mails na coleção '{Config.COLLECTION_EMAILS}'...")
         for doc in db[Config.COLLECTION_EMAILS].find(mongo_filter):
             text = doc.get("text_for_embedding", "")
             if text:
                 raw_documents.append(Document(
                     page_content=text,
-                    # Usando 'original_id' (ou o ID adequado do seu esquema de e-mail)
                     metadata={"source": f"Email_{doc.get('original_id', 'unknown')}", "type": "email"}
                 ))
 
@@ -88,7 +88,7 @@ class VectorStoreManager:
             print(f"⚠️ Nenhum documento encontrado no MongoDB para processar.")
             return
 
-        # 3. Processamento (Chunking)
+        # 4. Processamento (Chunking)
         print(f"✂️ Dividindo {len(raw_documents)} documentos inteiros...")
         text_splitter = RecursiveCharacterTextSplitter(
             chunk_size=Config.CHUNK_SIZE, 
@@ -96,7 +96,7 @@ class VectorStoreManager:
         )
         chunks = text_splitter.split_documents(raw_documents)
         
-        # 4. Vetorização e Armazenamento
+        # 5. Vetorização e Armazenamento
         print(f"🧠 Criando embeddings para {len(chunks)} chunks na coleção Chroma '{self.collection_name}'...")
         self.vectorstore.add_documents(chunks)
         print("✅ Ingestão no VectorStore concluída com sucesso!")
@@ -105,5 +105,10 @@ class VectorStoreManager:
         return self.vectorstore
 
     def get_retriever(self, k=Config.RETRIEVER_K):
+        """
+        Retorna o buscador base (BaseRetriever). 
+        A busca vetorial pura é mais rápida, barata e perfeitamente adequada 
+        já que as queries estão sendo refinadas pelos agentes do LangGraph.
+        """
         print(f"⚙️ Retriever para a coleção '{self.collection_name}' configurado com k={k}.")
         return self.vectorstore.as_retriever(search_kwargs={"k": k})
