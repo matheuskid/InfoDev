@@ -3,6 +3,7 @@ data/
 .venv/
 __pycache__/
 backups/
+vectorstores/
 
 # Ignorar variáveis de ambiente
 .env

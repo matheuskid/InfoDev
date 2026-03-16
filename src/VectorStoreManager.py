@@ -1,24 +1,27 @@
 import os
+from tqdm import tqdm
 from pymongo import MongoClient
 from langchain_core.documents import Document
 from langchain_community.vectorstores import Chroma
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
-# Importa a classe Config do arquivo Config.py
 from Config import Config
 
 class VectorStoreManager:
     """
-    Classe utilitária para carregar, processar e gerenciar VectorStores a partir do MongoDB.
-    Focada em alta performance usando BaseRetriever local.
+    Gerenciador de VectorStore otimizado.
+    Cada instância gerencia uma coleção específica, com barra de progresso e processamento em lotes.
     """
-    def __init__(self, persist_directory, collection_name):
+    
+    def __init__(self, persist_directory, collection_name, model_name):
         self.persist_directory = persist_directory
         self.collection_name = collection_name
+        self.model_name = model_name # <-- Guardamos o modelo escolhido
         
+        # Agora a função de embedding usa o modelo passado no construtor
         self.embedding_function = HuggingFaceEmbeddings(
-            model_name=Config.EMBEDDINGS_MODEL,
+            model_name=self.model_name,
             model_kwargs={
                 'device': Config.EMBEDDINGS_DEVICE,
                 'trust_remote_code': Config.EMBEDDINGS_TRUST_REMOTE_CODE
@@ -28,7 +31,6 @@ class VectorStoreManager:
         
         os.makedirs(self.persist_directory, exist_ok=True)
 
-        # Carrega o vectorstore na inicialização para evitar recarregamentos.
         self.vectorstore = Chroma(
             persist_directory=self.persist_directory,
             collection_name=self.collection_name,
@@ -36,79 +38,64 @@ class VectorStoreManager:
             collection_metadata={"hnsw:space": "cosine"}
         )
 
-    def ingest_documents(self, mongo_filter=None):
+    def ingest_documents(self, mongo_collection_name, doc_type, mongo_filter=None, batch_size=500):
         """
-        Busca os documentos no MongoDB, fatia e armazena no ChromaDB.
-        Executar apenas quando precisar popular ou atualizar o banco vetorial.
+        Extrai dados de uma coleção específica do Mongo, fatia e salva no Chroma em lotes.
         
         Args:
-            mongo_filter (dict): Filtro opcional para o MongoDB. Ex: {"project": "commons-cli"}
+            mongo_collection_name (str): Nome da coleção no MongoDB (ex: 'rich_commits')
+            doc_type (str): Tipo do documento para os metadados (ex: 'commit', 'issue')
+            mongo_filter (dict): Filtro para o MongoDB (ex: {"project": "commons-cli"})
+            batch_size (int): Quantidade de chunks enviados para a IA por vez.
         """
         if mongo_filter is None:
             mongo_filter = {}
 
-        print(f"🔌 Conectando ao MongoDB em {Config.MONGO_URI}...")
+        print(f"\nConectando ao MongoDB ({Config.DB_NAME} -> {mongo_collection_name})...")
         client = MongoClient(Config.MONGO_URI)
         db = client[Config.DB_NAME]
         
         raw_documents = []
         
-        # 1. Extração das Issues
-        print(f"🔍 Buscando issues na coleção '{Config.COLLECTION_ISSUES}'...")
-        for doc in db[Config.COLLECTION_ISSUES].find(mongo_filter):
+        # 1. Extração Focada
+        print(f"Buscando documentos...")
+        for doc in db[mongo_collection_name].find(mongo_filter).limit(1000):  # Limite para evitar sobrecarga, pode ser ajustado
             text = doc.get("text_for_embedding", "")
             if text:
+                # Usa hash para commits, original_id para os outros
+                doc_id = doc.get("hash") or doc.get("original_id", "unknown")
                 raw_documents.append(Document(
                     page_content=text,
-                    # Mantendo os metadados em inglês
-                    metadata={"source": f"Issue_{doc.get('original_id', 'unknown')}", "type": "issue"}
-                ))
-                
-        # 2. Extração dos Commits
-        print(f"🔍 Buscando commits na coleção '{Config.COLLECTION_COMMITS}'...")
-        for doc in db[Config.COLLECTION_COMMITS].find(mongo_filter):
-            text = doc.get("text_for_embedding", "")
-            if text:
-                raw_documents.append(Document(
-                    page_content=text,
-                    metadata={"source": f"Commit_{doc.get('hash', 'unknown')}", "type": "commit"}
-                ))
-
-        # 3. Extração dos E-mails
-        print(f"🔍 Buscando e-mails na coleção '{Config.COLLECTION_EMAILS}'...")
-        for doc in db[Config.COLLECTION_EMAILS].find(mongo_filter):
-            text = doc.get("text_for_embedding", "")
-            if text:
-                raw_documents.append(Document(
-                    page_content=text,
-                    metadata={"source": f"Email_{doc.get('original_id', 'unknown')}", "type": "email"}
+                    metadata={"source": f"{doc_type.capitalize()}_{doc_id}", "type": doc_type}
                 ))
 
         if not raw_documents:
-            print(f"⚠️ Nenhum documento encontrado no MongoDB para processar.")
+            print(f"Nenhum documento encontrado com o filtro: {mongo_filter}")
             return
 
-        # 4. Processamento (Chunking)
-        print(f"✂️ Dividindo {len(raw_documents)} documentos inteiros...")
+        # 2. Processamento (Chunking)
+        print(f"Dividindo {len(raw_documents)} documentos...")
         text_splitter = RecursiveCharacterTextSplitter(
             chunk_size=Config.CHUNK_SIZE, 
             chunk_overlap=Config.CHUNK_OVERLAP
         )
         chunks = text_splitter.split_documents(raw_documents)
+        total_chunks = len(chunks)
+        print(f"Total gerado: {total_chunks} chunks.")
         
-        # 5. Vetorização e Armazenamento
-        print(f"🧠 Criando embeddings para {len(chunks)} chunks na coleção Chroma '{self.collection_name}'...")
-        self.vectorstore.add_documents(chunks)
-        print("✅ Ingestão no VectorStore concluída com sucesso!")
+        # 3. Vetorização em Lotes com Barra de Progresso (tqdm)
+        print(f"Iniciando vetorização (Lotes de {batch_size})...")
+        
+        # O tqdm cria a barra visual no terminal ou no output do notebook
+        for i in tqdm(range(0, total_chunks, batch_size), desc=f"Vetorizando '{self.collection_name}'"):
+            lote = chunks[i : i + batch_size]
+            self.vectorstore.add_documents(lote)
+            
+        print(f"Ingestão na coleção '{self.collection_name}' concluída com sucesso!")
 
     def get_vectorstore(self):
         return self.vectorstore
 
     def get_retriever(self, k=Config.RETRIEVER_K):
-        """
-        Retorna o buscador base (BaseRetriever). 
-        A busca vetorial pura é mais rápida, barata e perfeitamente adequada 
-        já que as queries estão sendo refinadas pelos agentes do LangGraph.
-        """
-        print(f"⚙️ Retriever para a coleção '{self.collection_name}' configurado com k={k}.")
+        print(f"Retriever para '{self.collection_name}' configurado (k={k}).")
         return self.vectorstore.as_retriever(search_kwargs={"k": k})

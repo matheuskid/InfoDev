@@ -39,7 +39,7 @@ class Config:
     EMBEDDINGS_MODEL = "jinaai/jina-embeddings-v3"
     EMBEDDINGS_DEVICE = "cpu"
     EMBEDDINGS_TRUST_REMOTE_CODE = True
-    EMBEDDINGS_BATCH_SIZE = 1  # Evita o erro de alinhamento de tensores no PyTorch
+    EMBEDDINGS_BATCH_SIZE = 32 
 
     # Parâmetros de fatiamento de texto (Chunking)
     CHUNK_SIZE = 500
