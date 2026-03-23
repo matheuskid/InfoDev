@@ -2,9 +2,7 @@ from pymongo import MongoClient
 from tqdm import tqdm
 import sys
 
-# ==============================================================================
 # CONFIGURAÇÃO: LISTA DE PROJETOS
-# ==============================================================================
 # Coloque aqui os nomes EXATOS como estão no SmartSHARK
 TARGET_PROJECTS = [
     "tez", 
@@ -17,9 +15,7 @@ TARGET_PROJECTS = [
 SOURCE_DB = "smartshark_2_1"
 TARGET_DB = "clean_shark"
 
-# ==============================================================================
 # PREPARAÇÃO
-# ==============================================================================
 client = MongoClient("mongodb://localhost:27017/")
 db_in = client[SOURCE_DB]
 db_out = client[TARGET_DB]
@@ -54,9 +50,8 @@ def process_project(project_name):
     
     proj_id = project["_id"]
 
-    # ==========================================================
+
     # A. ISSUES (Coordenação)
-    # ==========================================================
     issue_system = db_in.issue_system.find_one({"project_id": proj_id})
     if issue_system:
         cursor = db_in.issue.find({"issue_system_id": issue_system["_id"]}).batch_size(1000)
@@ -88,9 +83,7 @@ def process_project(project_name):
         
         if buffer: db_out.rich_issues.insert_many(buffer)
 
-    # ==========================================================
     # B. EMAILS (Comunicação)
-    # ==========================================================
     mailing_lists = list(db_in.mailing_list.find({"project_id": proj_id}))
     ml_ids = [ml["_id"] for ml in mailing_lists]
 
@@ -113,9 +106,7 @@ def process_project(project_name):
         
         if buffer: db_out.rich_emails.insert_many(buffer)
 
-    # ==========================================================
     # C. COMMITS + CÓDIGO (Cooperação)
-    # ==========================================================
     vcs = db_in.vcs_system.find_one({"project_id": proj_id})
     if vcs:
         cursor = db_in.commit.find({"vcs_system_id": vcs["_id"]}, no_cursor_timeout=True).batch_size(20)
@@ -175,9 +166,7 @@ def process_project(project_name):
         
         if buffer: db_out.rich_commits.insert_many(buffer)
 
-# ==============================================================================
 # EXECUÇÃO PRINCIPAL
-# ==============================================================================
 if __name__ == "__main__":
     setup_indexes()     # Cria índices 1 vez
     clean_target_db()   # Limpa o destino 1 vez

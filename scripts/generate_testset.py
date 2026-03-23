@@ -8,9 +8,7 @@ from langchain_groq import ChatGroq
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 
-# ==============================================================================
 # IMPORTAÇÕES ATUALIZADAS DO RAGAS (v0.4+)
-# ==============================================================================
 from ragas.testset import TestsetGenerator
 from ragas.run_config import RunConfig
 from ragas.testset.evolutions import simple, reasoning, multi_context
@@ -23,9 +21,7 @@ if not os.getenv("GROQ_API_KEY"):
 
 MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017/")
 
-# ==============================================================================
 # 2. CONFIGURAR OS MODELOS (GROQ + JINA)
-# ==============================================================================
 print("🤖 Inicializando modelos...")
 
 # LLM da Groq
@@ -35,9 +31,9 @@ groq_llm = ChatGroq(
 )
 
 # Embeddings Locais (Jina)
-print("📥 Loading Jina Embeddings v3...")
+print("📥 Loading Jina Embeddings v2...")
 jina_embeddings = HuggingFaceEmbeddings(
-    model_name="jinaai/jina-embeddings-v3",
+    model_name="jinaai/jina-embeddings-v2-base-code",
     model_kwargs={
         'device': 'cpu',
         'trust_remote_code': True 
@@ -57,9 +53,7 @@ generator = TestsetGenerator.from_langchain(
 
 print("✅ Gerador montado com sucesso!")
 
-# ==============================================================================
 # 3. CARREGAR DADOS DO MONGODB (CLEAN_SHARK)
-# ==============================================================================
 print(f"📦 Conectando ao MongoDB em {MONGO_URI}...")
 client = MongoClient(MONGO_URI)
 db = client["clean_shark"]
@@ -69,13 +63,13 @@ target_project = "tez"
 
 # Pegando uma amostra (Pode aumentar se quiser, mas cuidado com os limites da API gratuita da Groq)
 print("🔍 Buscando amostras no banco de dados...")
-for doc in db.rich_issues.find({"project": target_project}).limit(30):
+for doc in db.rich_issues.find({"project": target_project}).limit(50):
     docs_langchain.append(Document(
         page_content=doc.get("text_for_embedding", ""),
         metadata={"source": f"Issue_{doc.get('original_id')}", "type": "issue"}
     ))
 
-for doc in db.rich_commits.find({"project": target_project}).limit(30):
+for doc in db.rich_commits.find({"project": target_project}).limit(50):
     docs_langchain.append(Document(
         page_content=doc.get("text_for_embedding", ""),
         metadata={"source": f"Commit_{doc.get('hash', 'unknown')}", "type": "commit"}
@@ -83,15 +77,12 @@ for doc in db.rich_commits.find({"project": target_project}).limit(30):
 
 print(f"✅ Total de documentos carregados: {len(docs_langchain)}")
 
-# ==============================================================================
 # CHUNKING
-# ==============================================================================
 print("✂️ Quebrando documentos em Chunks...")
 
-# Configura o cortador para pedaços de no máximo 1000 caracteres
 text_splitter = RecursiveCharacterTextSplitter(
     chunk_size=500,
-    chunk_overlap=100 # Mantém 200 caracteres do pedaço anterior para não perder o contexto
+    chunk_overlap=100
 )
 
 # Substitui a lista de documentos inteiros pela lista de pedaços
@@ -99,32 +90,26 @@ docs_langchain = text_splitter.split_documents(docs_langchain)
 
 print(f"🧩 Após o corte, temos {len(docs_langchain)} pedaços de documento prontos para o Ragas!")
 
-# ==============================================================================
+
 # 4. GENERATE TESTSET (NO BRAKES)
-# ==============================================================================
-# Restoring the complex question types
 distributions = {
-    simple: 0.4,
-    reasoning: 0.3,
-    multi_context: 0.3
+    simple: 0.2,
+    reasoning: 0.4,
+    multi_context: 0.4
 }
 
-# Set your target size here. 50 is a great baseline for testing the final system.
-TARGET_QUESTIONS = 10 
+TARGET_QUESTIONS = 50 
 
-print(f"🚀 Generating {TARGET_QUESTIONS} synthetic questions at maximum speed...")
+print(f"🚀 Generating {TARGET_QUESTIONS} synthetic questions...")
 testset = generator.generate_with_langchain_docs(
     documents=docs_langchain,
     test_size=TARGET_QUESTIONS,
     distributions=distributions
-    # Notice: run_config is gone! We let Ragas run fully asynchronous now.
 )
 
-# ==============================================================================
 # 5. EXPORT
-# ==============================================================================
 df = testset.to_pandas()
-df.to_csv("ragas_testset_tcc.csv", index=False)
+df.to_csv("ragas_testset_tcc_2.csv", index=False)
 
 print(f"\n🎉 SUCCESS! Full dataset saved to 'ragas_testset_tcc.csv'!")
 print(df[["question", "evolution_type"]].head())
