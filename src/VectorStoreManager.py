@@ -17,9 +17,8 @@ class VectorStoreManager:
     def __init__(self, persist_directory, collection_name, model_name):
         self.persist_directory = persist_directory
         self.collection_name = collection_name
-        self.model_name = model_name # <-- Guardamos o modelo escolhido
+        self.model_name = model_name
         
-        # Agora a função de embedding usa o modelo passado no construtor
         self.embedding_function = HuggingFaceEmbeddings(
             model_name=self.model_name,
             model_kwargs={
@@ -57,7 +56,6 @@ class VectorStoreManager:
         
         raw_documents = []
         
-        # 1. Extração Focada
         print(f"Buscando documentos...")
         for doc in db[mongo_collection_name].find(mongo_filter).limit(1000):  # Limite para evitar sobrecarga, pode ser ajustado
             text = doc.get("text_for_embedding", "")
@@ -73,7 +71,6 @@ class VectorStoreManager:
             print(f"Nenhum documento encontrado com o filtro: {mongo_filter}")
             return
 
-        # 2. Processamento (Chunking)
         print(f"Dividindo {len(raw_documents)} documentos...")
         text_splitter = RecursiveCharacterTextSplitter(
             chunk_size=Config.CHUNK_SIZE, 
@@ -83,10 +80,8 @@ class VectorStoreManager:
         total_chunks = len(chunks)
         print(f"Total gerado: {total_chunks} chunks.")
         
-        # 3. Vetorização em Lotes com Barra de Progresso (tqdm)
         print(f"Iniciando vetorização (Lotes de {batch_size})...")
         
-        # O tqdm cria a barra visual no terminal ou no output do notebook
         for i in tqdm(range(0, total_chunks, batch_size), desc=f"Vetorizando '{self.collection_name}'"):
             lote = chunks[i : i + batch_size]
             self.vectorstore.add_documents(lote)

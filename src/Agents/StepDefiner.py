@@ -3,39 +3,37 @@ from Util import update_token_usage
 
 class StepDefiner:
     """
-    Agente responsável por analisar o progresso atual, verificar redundâncias
-    na memória e refinar a consulta do próximo passo estratégico.
+    Agent responsible for analyzing current progress, checking for redundancies
+    in memory, and refining the next strategic step.
     """
     def __init__(self, llm):
         self.llm = llm
         
-        # Prompt fixo e compilado uma única vez
         self.prompt = ChatPromptTemplate.from_template(
-            "Dado o plano original, o passo que acabamos de finalizar e os resultados (memória), "
-            "seu objetivo é refinar o **Próximo Passo Imediato**.\n\n"
+            "Given the original plan, the step we just finished, and the results (memory), "
+            "your goal is to refine the **Immediate Next Step**.\n\n"
             
-            "ENTRADAS:\n"
-            "Plano (Passos Futuros): {future_steps}\n"
-            "Passo Recém-Finalizado: {current_step}\n"
-            "Memória (Resultados): {memory}\n\n"
+            "INPUTS:\n"
+            "Plan (Future Steps): {future_steps}\n"
+            "Recently Finished Step: {current_step}\n"
+            "Memory (Results): {memory}\n\n"
             
-            "INSTRUÇÕES:\n"
-            "1. **Verificar Redundância:** Se a 'Memória' já contém a resposta completa para o primeiro passo dos 'Passos Futuros', responda apenas 'FINALIZADO'.\n"
-            "2. **Refinar Consulta:** Se o passo ainda for necessário, reescreva-o de forma resumida e concisa.\n"
-            "3. **Concisão:** Responda APENAS com a string da consulta refinada ou 'FINALIZADO' caso a resposta já esteja na memória. Não escreva 'Tipo de Tarefa' nem explicações.\n\n"
+            "INSTRUCTIONS:\n"
+            "1. If the 'Memory' already contains the complete answer for the first step of the 'Future Steps', reply ONLY with 'DONE'.\n"
+            "2. If the step is still necessary, rewrite it concisely and briefly.\n"
+            "3. Reply ONLY with the refined query string OR 'DONE' if the answer is already in memory. Do not explain.\n\n"
             
-            "Próximo Passo:"
+            "Next Step:"
         )
         self.chain = self.prompt | self.llm
 
     def run(self, state):
-        print("--- Agente: Step Definer (Refinando Próximo Passo) ---")
+        print("--- Agent: Step Definer (Refining Next Step) ---")
         
         plan = state.get("plan", [])
         current_step = state.get("current_step")
         evidence = state.get("evidence", [])
         
-        # Calcular o que falta fazer
         try:
             current_idx = plan.index(current_step)
             future_steps = plan[current_idx+1:]
@@ -45,10 +43,8 @@ class StepDefiner:
         if not future_steps:
             return {"feedback": "finished"}
         
-        # Agrupar a memória em um bloco de texto
         memory_context = "\n".join(evidence)
         
-        # Invocar o LLM
         response = self.chain.invoke({
             "future_steps": str(future_steps),
             "current_step": current_step,
@@ -58,24 +54,31 @@ class StepDefiner:
         new_usage = update_token_usage(state, response)
         refined_next_step = response.content.strip()
         
-        print(f"Próximo passo refinado: '{refined_next_step}'")
+        print(f"➡️ Refined next step: '{refined_next_step}'")
 
-        # --- Lógica de Roteamento de Saída ---
-        if "FINALIZADO" in refined_next_step.upper():
-            print("✅ O LLM percebeu que a resposta já está na memória.")
-            return {"feedback": "finished", "token_usage": new_usage}
+        
+        if "DONE" in refined_next_step.upper():
+            print("✅ Answer already in memory or plan is complete.")
+            return {
+                "feedback": "finished", 
+                "token_usage": new_usage
+            }
+        
         else:
-            # Substituir o passo antigo pelo passo detalhado
             future_steps.pop(0) 
+            
             new_future_steps = [refined_next_step] + future_steps
             
-            # Reconstruir o plano completo
             done_steps = plan[:current_idx+1]
             updated_full_plan = done_steps + new_future_steps
             
             return {
                 "plan": updated_full_plan,  
-                "current_step": refined_next_step, # Define como novo alvo
+                "current_step": refined_next_step, # Set as the new target
                 "feedback": "continue",
+                
+                "failed_categories": [], 
+                "retry_count": 0,        
+                
                 "token_usage": new_usage
             }

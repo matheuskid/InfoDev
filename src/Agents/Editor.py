@@ -10,24 +10,22 @@ class Editor:
         self.llm = llm
         
         self.prompt = ChatPromptTemplate.from_template(
-            "Você é um assistente de resposta a perguntas. Use as evidências coletadas para responder à pergunta original do usuário.\n"
-            "Responda apenas com os fatos. Remova informações redundantes.\n\n"
-            "Pergunta Original: \"{query}\"\n\n"
-            "Evidências Coletadas:\n---\n{evidence}\n---\n"
-            "Resposta Final:"
+            "You are a question-answering assistant. Use the collected evidence to answer the user's original question.\n"
+            "Answer only with facts. Remove redundant information.\n\n"
+            "Original Question: \"{query}\"\n\n"
+            "Collected Evidence:\n---\n{evidence}\n---\n"
+            "Final Answer:"
         )
         self.chain = self.prompt | self.llm
 
     def run(self, state):
         print("--- Agente: Editor (Gerando Resposta Final) ---")
         
-        # Junta todas as evidências validadas em um grande texto de contexto
         evidence_list = state.get("evidence", [])
         full_context = "\n\n".join(evidence_list)
         
         original_query = state.get("query", "")
         
-        # Invocação
         response = self.chain.invoke({
             "query": original_query, 
             "evidence": full_context

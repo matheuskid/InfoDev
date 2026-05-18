@@ -1,69 +1,63 @@
 from langchain.prompts import ChatPromptTemplate
 from Util import update_token_usage
+import re
 
 class Router:
-    """
-    Agente classificador que direciona a pergunta para o banco de dados (VectorStore) correto,
-    respeitando os domínios que já falharam anteriormente (blacklist).
-    """
     def __init__(self, llm):
         self.llm = llm
+
+    def run(self, state):
+        print("🧭 [ROTEADOR] Escolhendo o banco de dados...")
         
-        # Melhoria Arquitetural: Um único prompt que lida dinamicamente com a blacklist
-        self.prompt = ChatPromptTemplate.from_messages([
-            ("system", """Você é um especialista em classificação. Classifique a consulta para o domínio correto.
+        step_query = state["current_step"]
+        blacklist = state.get("failed_categories", [])
+        
+        todos_dominios = {
+            "commits": "Source code, code implementation details, commit messages.",
+            "issues": "Bug reports, task descriptions, feature requests.",
+            "emails": "Developer discussions, mailing lists, community decisions."
+        }
+
+        if blacklist:
+            print(f"   -> Ignorando domínios (Blacklist): {blacklist}")
             
-            DOMÍNIOS DISPONÍVEIS:
-            1. 'estrategico': Direção, objetivos, metas de longo prazo.
-            2. 'executivo': Regras internas, procedimentos, regulamentos internos.
-            3. 'legislativo': Leis federais, decretos, estatutos.
-            
-            Se a variável 'Domínios proibidos' contiver algum nome, você NÃO PODE escolhê-lo em hipótese alguma.
-            Domínios proibidos: {blacklist}
-            
-            Retorne APENAS a palavra do domínio escolhido (estrategico, executivo ou legislativo). Não explique."""),
+            for dominio in blacklist:
+                todos_dominios.pop(dominio)
+
+            if todos_dominios.__len__ == 0: return Exception
+        
+        dominios_str = "\n".join([f"'{chave}': {valor}" for chave, valor in todos_dominios.items()])
+        chaves_validas = ", ".join([f"'{chave}'" for chave in todos_dominios.keys()])
+
+        system_prompt = f"""You are a classification expert. Classify the user's query into the correct domain.
+        
+        AVAILABLE DOMAINS:
+        {dominios_str}
+        
+        Return ONLY the exact word of the chosen domain ({chaves_validas}). Do not explain."""
+
+        prompt = ChatPromptTemplate.from_messages([
+            ("system", system_prompt),
             ("human", "{query}")
         ])
         
-        self.chain = self.prompt | self.llm
-
-    def run(self, state):
-        print("--- Agente: Router (LLM Classification) ---")
-        
-        step_query = state.get("current_step", "")
-        print(f"A rotear: '{step_query}'")
-        
-        # Puxar categorias falhas (Blacklist)
-        blacklist = state.get("failed_categories", [])
-        blacklist_str = ", ".join(blacklist) if blacklist else "Nenhum"
-        
-        if blacklist:
-            print(f"⚠️ Ignorando domínios (Blacklist): {blacklist_str}")
+        chain = prompt | self.llm
         
         try:
-            # Invocar o LLM injetando a blacklist
-            response = self.chain.invoke({
-                "query": step_query,
-                "blacklist": blacklist_str
-            })
-
+            response = chain.invoke({"query": step_query})
             new_usage = update_token_usage(state, response)
-            category = response.content.strip().lower()
+
+            category = str(response.content).strip().lower()
+            category = re.sub(r'[^a-z]', '', category) 
             
-            # Limpeza e garantia da saída
-            if "estrategico" in category: 
-                category = "estrategico"
-            elif "executivo" in category: 
-                category = "executivo"
-            elif "legislativo" in category: 
-                category = "legislativo"
-            else:
-                category = "general" # Fallback caso o LLM invente palavras
-                    
+            if category not in todos_dominios.keys():
+                print(f"⚠️ Roteador fugiu do escopo ('{category}'). Forçando a primeira opção válida.")
+                category = list(todos_dominios.keys())[0] 
+                
         except Exception as e:
-            print(f"❌ Erro no Roteamento: {e}")
-            category = "general"
+            print(f"❌ Erro na execução do Roteador: {e}")
+            category = list(todos_dominios.keys())[0] if todos_dominios else "issues"
             new_usage = state.get("token_usage", {})
 
-        print(f"🧭 Decisão de Roteamento: {category}")
+        print(f"✅ Routing Decision: {category}")
         return {"search_category": category, "token_usage": new_usage}

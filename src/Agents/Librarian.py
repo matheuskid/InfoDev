@@ -4,8 +4,6 @@ class Librarian:
     Recebe a categoria definida pelo Router e executa a busca no VectorStore correspondente.
     """
     def __init__(self, dicionario_retrievers):
-        # 1. Recebe o dicionário completo com todos os retrievers instanciados no App.py
-        # Ex: {"estrategico": retriever_est, "executivo": retriever_exe, ...}
         self.retrievers = dicionario_retrievers
 
     def run(self, state):
@@ -17,20 +15,16 @@ class Librarian:
         
         print(f"--- Agente: Bibliotecário (Buscando em '{category}') ---")
         
-        # 2. Busca a ferramenta de recuperação correta com base na decisão do Router
         target_retriever = self.retrievers.get(category)
         
         if not target_retriever:
             print(f"⚠️ Aviso: Nenhum banco de dados configurado para o domínio '{category}'.")
-            # Pode retornar vazio ou redirecionar para um retriever padrão (fallback)
             return {"documents": []}
         
-        # 3. Executa a busca vetorial usando o MultiQueryRetriever
         try:
             print(f"🔍 Executando query: '{step_query}'")
             retrieved_docs = target_retriever.invoke(step_query)
             
-            # Extrai apenas o texto útil dos documentos LangChain
             doc_contents = [doc.page_content for doc in retrieved_docs]
             
             print(f"📚 Sucesso: {len(doc_contents)} trechos de documentos recuperados.")
