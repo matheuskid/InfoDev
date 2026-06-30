@@ -35,10 +35,6 @@ O **Librarian** combina dois métodos de recuperação:
 
 Os resultados são fundidos com **Reciprocal Rank Fusion (RRF)**, que combina os rankings das duas buscas em um ranking unificado mais robusto:
 
-```
-RRF_score(doc) = Σ 1 / (k + rank_i(doc))
-```
-
 ### Dual-LLM
 
 O sistema utiliza modelos diferentes otimizados por tarefa:
