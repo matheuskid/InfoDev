@@ -14,33 +14,7 @@ Sistema inteligente de **Recuperação da Informação** para equipes de desenvo
 
 O sistema utiliza **7 agentes especializados** orquestrados por um grafo de estados (`StateGraph`):
 
-```
-User Query
-    │
-    ▼
-┌──────────┐
-│ Planner  │──► Decompõe a pergunta em passos de investigação
-└────┬─────┘
-     ▼
-┌──────────┐
-│  Router  │◄─── (loop) ◄── StepDefiner (próximo passo)
-└────┬─────┘                      ▲
-     ▼                            │
-┌──────────┐               ┌─────┴──────┐
-│Librarian │               │StepDefiner │
-└────┬─────┘               └─────▲──────┘
-     ▼                            │
-┌──────────┐               ┌─────┴──────┐
-│Extractor │               │ Validator  │── REJECTED → Router (retry)
-└────┬─────┘               └────────────┘
-     ▼                            ▲
-     └────────────────────────────┘
-                                  │ (finished)
-                                  ▼
-                            ┌──────────┐
-                            │  Editor  │──► Resposta Final
-                            └──────────┘
-```
+<img width="2616" height="355" alt="arquitetura_esboco" src="https://github.com/user-attachments/assets/5a4c9d2e-ce12-4fdc-986f-3068a57319bc" />
 
 | Agente | Função |
 |--------|--------|
