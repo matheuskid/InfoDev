@@ -61,15 +61,15 @@ db = client["clean_shark"]
 docs_langchain = []
 target_project = "tez"
 
-# Pegando uma amostra (Pode aumentar se quiser, mas cuidado com os limites da API gratuita da Groq)
-print("🔍 Buscando amostras no banco de dados...")
-for doc in db.rich_issues.find({"project": target_project}).limit(50):
+# Pula os 100 primeiros documentos (que já foram usados) e pega os próximos 150
+print("🔍 Buscando novas amostras no banco de dados...")
+for doc in db.rich_issues.find({"project": target_project}).skip(100).limit(150):
     docs_langchain.append(Document(
         page_content=doc.get("text_for_embedding", ""),
         metadata={"source": f"Issue_{doc.get('original_id')}", "type": "issue"}
     ))
 
-for doc in db.rich_commits.find({"project": target_project}).limit(50):
+for doc in db.rich_commits.find({"project": target_project}).skip(100).limit(150):
     docs_langchain.append(Document(
         page_content=doc.get("text_for_embedding", ""),
         metadata={"source": f"Commit_{doc.get('hash', 'unknown')}", "type": "commit"}
@@ -109,7 +109,9 @@ testset = generator.generate_with_langchain_docs(
 
 # 5. EXPORT
 df = testset.to_pandas()
-df.to_csv("ragas_testset_tcc_2.csv", index=False)
+# Remove as perguntas inválidas geradas automaticamente para já sair limpo
+df = df[df['ground_truth'] != 'The answer to given question is not present in context']
+df.to_csv("ragas_testset_novas_50.csv", index=False)
 
-print(f"\n🎉 SUCCESS! Full dataset saved to 'ragas_testset_tcc.csv'!")
+print(f"\n🎉 SUCESSO! Novo dataset (apenas válidas) salvo em 'ragas_testset_novas_50.csv'!")
 print(df[["question", "evolution_type"]].head())

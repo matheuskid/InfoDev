@@ -22,8 +22,8 @@ class Config:
     COLLECTION_EMAILS = "rich_emails"
 
     # MODELOS DE LINGUAGEM
-    LLM_MODEL = "llama3-70b-8192"
-    LLM_TEMPERATURE = 0.1
+    LLM_MODEL = "openai/gpt-oss-120b"
+    LLM_TEMPERATURE = 0.0
 
     # MODELOS DE EMBEDDINGS E VETORIZAÇÃO
     EMBEDDINGS_MODEL_CODE = "jinaai/jina-embeddings-v2-base-code"
@@ -33,8 +33,14 @@ class Config:
     EMBEDDINGS_BATCH_SIZE = 32 
 
     # Parâmetros de fatiamento de texto (Chunking)
-    CHUNK_SIZE = 500
-    CHUNK_OVERLAP = 100
+    CHUNK_SIZE = 1000
+    CHUNK_OVERLAP = 300
 
     # 5. CONFIGURAÇÕES DOS AGENTES LANGGRAPH
-    RETRIEVER_K = 5
+    RETRIEVER_K = 7
+
+    # 6. BUSCA HÍBRIDA (RRF)
+    RRF_K = 60               # Parâmetro de suavização do Reciprocal Rank Fusion
+    RETRIEVER_K_VECTOR = 10  # Candidatos da busca vetorial (antes do merge)
+    RETRIEVER_K_BM25 = 10    # Candidatos da busca BM25 (antes do merge)
+    RETRIEVER_K_FINAL = 7    # Docs finais após fusão RRF

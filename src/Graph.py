@@ -33,7 +33,10 @@ def route_step_definer(state):
     else:
         return "router"
 
-def build_graph(llm):
+def build_graph(llm_geral, llm_extractor=None):
+    if llm_extractor is None:
+        llm_extractor = llm_geral
+    
     print("⚙️ Montando a Arquitetura do InfoDev...")
     
     db_path = "./vectorstores/tez_db"
@@ -41,19 +44,19 @@ def build_graph(llm):
     vsm_issues = VectorStoreManager(db_path, "issues", "nomic-ai/nomic-embed-text-v1.5")
     vsm_emails = VectorStoreManager(db_path, "emails", "nomic-ai/nomic-embed-text-v1.5")
     
-    dict_retrievers = {
-        "commits": vsm_commits.get_retriever(k=3),
-        "issues": vsm_issues.get_retriever(k=3),
-        "emails": vsm_emails.get_retriever(k=3)
+    dict_vsm = {
+        "commits": vsm_commits,
+        "issues": vsm_issues,
+        "emails": vsm_emails
     }
 
-    planner_agent = Planner(llm)
-    router_agent = Router(llm)
-    librarian_agent = Librarian(dict_retrievers) 
-    extractor_agent = Extractor(llm)
-    validator_agent = Validator(llm)
-    step_definer_agent = StepDefiner(llm)
-    editor_agent = Editor(llm)
+    planner_agent = Planner(llm_geral)
+    router_agent = Router(llm_geral)
+    librarian_agent = Librarian(dict_vsm) 
+    extractor_agent = Extractor(llm_extractor)
+    validator_agent = Validator(llm_geral)
+    step_definer_agent = StepDefiner(llm_geral)
+    editor_agent = Editor(llm_geral)
 
     workflow = StateGraph(GraphState)
     

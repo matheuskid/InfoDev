@@ -26,7 +26,7 @@ load_dotenv(override=True)
 
 # 2. SETUP DO JUIZ (LLM e Embeddings para o RAGAS)
 print("⚖️ Inicializando o LLM Juiz do RAGAS...")
-# Usamos o GPT-OSS 120b ou o Llama 3 70b para julgar as respostas com alta precisão
+# O juiz do RAGAS permanece fixo para comparações justas
 llm_juiz = ChatGroq(model_name="llama-3.3-70b-versatile", temperature=0)
 
 # O RAGAS precisa de embeddings para calcular a similaridade de algumas métricas
@@ -37,11 +37,18 @@ embeddings_juiz = HuggingFaceEmbeddings(
 
 # 3. INSTANCIANDO O SEU SISTEMA (InfoDev)
 print("🤖 Montando a arquitetura multiagente do InfoDev...")
-# Usamos o mesmo LLM para rodar os agentes do sistema
-workflow = build_graph(llm_juiz)
+from Config import Config
+# LLM principal (Editor, Planner, Router, Validator, etc)
+llm_sistema = ChatGroq(model_name="openai/gpt-oss-120b", temperature=Config.LLM_TEMPERATURE)
+# LLM especializado na Extração (tem melhor recall lendo chunks grandes e sujos)
+llm_extractor = ChatGroq(model_name="llama-3.3-70b-versatile", temperature=Config.LLM_TEMPERATURE)
+
+print(f"   Modelo Geral: openai/gpt-oss-120b (temp={Config.LLM_TEMPERATURE})")
+print(f"   Modelo Extrator: llama-3.3-70b-versatile (temp={Config.LLM_TEMPERATURE})")
+workflow = build_graph(llm_sistema, llm_extractor)
 
 # 4. CARREGANDO O DATASET DE TESTES
-nome_do_arquivo_csv = "ragas_testset.csv" # <-- COLOQUE O NOME DO SEU CSV AQUI
+nome_do_arquivo_csv = "ragas_testset_final_43.csv" # <-- COLOQUE O NOME DO SEU CSV AQUI
 print(f"📂 Carregando dataset de testes local: {nome_do_arquivo_csv}")
 df_testes = pd.read_csv(nome_do_arquivo_csv)
 
@@ -86,10 +93,10 @@ for index, row in df_testes.iterrows():
                 if node_name == "editor" and "final_answer" in state_updates:
                     resposta_gerada = state_updates["final_answer"]
                 
-                # Captura as evidências trazidas do banco vetorial pelo sistema
+                # Captura as evidências resumidas pelo Agente Extrator
                 if "evidence" in state_updates:
-                    # Garantimos que seja sempre uma lista de strings
-                    contextos_recuperados = state_updates["evidence"]
+                    # Garantimos que seja sempre uma lista de strings acumulada
+                    contextos_recuperados.extend(state_updates["evidence"])
 
         print(f"✅ Resposta gerada com sucesso! ({len(contextos_recuperados)} fragmentos de contexto usados).")
 
@@ -130,7 +137,7 @@ resultado = evaluate(
 
 # 7. EXPORTAÇÃO DOS RESULTADOS FINAIS
 df_resultado = resultado.to_pandas()
-arquivo_saida = "resultado_avaliacao_infodev.csv"
+arquivo_saida = "resultado_avaliacao_hybrid_rrf_split.csv"
 df_resultado.to_csv(arquivo_saida, index=False)
 
 print("\n🏆 RESULTADOS MÉDIOS FINAIS:")

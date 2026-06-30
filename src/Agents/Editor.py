@@ -10,8 +10,12 @@ class Editor:
         self.llm = llm
         
         self.prompt = ChatPromptTemplate.from_template(
-            "You are a question-answering assistant. Use the collected evidence to answer the user's original question.\n"
-            "Answer only with facts. Remove redundant information.\n\n"
+            "You are a question-answering assistant. "
+            "Use ONLY the collected evidence below to answer the user's original question.\n"
+            "STRICT RULES:\n"
+            "- Base your answer EXCLUSIVELY on the evidence provided. Do NOT add any external knowledge.\n"
+            "- If the evidence does not contain enough information, say so clearly.\n"
+            "- Remove redundant information and be concise.\n\n"
             "Original Question: \"{query}\"\n\n"
             "Collected Evidence:\n---\n{evidence}\n---\n"
             "Final Answer:"

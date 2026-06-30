@@ -1,71 +1,169 @@
-# 🤖 InfoDev: Multi-Agent RAG System
+# 🤖 InfoDev: Sistema Multiagente RAG
 
-O **InfoDev** é um ecossistema inteligente projetado para otimizar a recuperação e geração de informações técnicas. O foco do projeto é resolver a fragmentação de dados em ambientes de desenvolvimento, utilizando uma arquitetura de múltiplos agentes e **Retrieval-Augmented Generation (RAG)**.
+Sistema inteligente de **Recuperação da Informação** para equipes de desenvolvimento. Combina uma arquitetura de **múltiplos agentes** (LangGraph) com **Retrieval-Augmented Generation (RAG)** e **Busca Híbrida** (Vetorial + BM25 com RRF) para responder perguntas complexas sobre repositórios de software.
 
 ## 📋 Sobre o Projeto
 
-* **⚠️ Problema:** A dificuldade de encontrar informações precisas em grandes volumes de dados técnicos não estruturados.
+* **⚠️ Problema:** A dificuldade de encontrar informações precisas em grandes volumes de dados técnicos não estruturados (commits, issues, emails).
 * **🎯 Objetivo:** Desenvolver um sistema capaz de realizar buscas semânticas e responder a consultas complexas com alta fidelidade.
-* **💡 Solução:** Implementação de um pipeline que integra **LangChain + LangGraph**, agentes de IA e bancos de dados vetoriais/documentais.
+* **💡 Solução:** Pipeline que integra **LangChain + LangGraph**, 7 agentes de IA especializados, busca híbrida (vetorial + lexical) e bancos de dados vetoriais/documentais.
 
-## 🏗️ Estrutura do Projeto
+## 🏗️ Arquitetura
 
-A organização de pastas reflete a separação entre ambiente isolado, persistência e processamento de dados:
+### Fluxo Multiagente (LangGraph)
 
-* 📂 `.venv/`: Ambiente virtual Python para isolamento de dependências.
-* 📦 `backups/`: Armazena o backup do banco de dados `clean_shark_backup.archive`.
-* 🗄️ `data/mongo_db/`: Volume de dados para persistência (MongoDB).
-* 📜 `scripts/`: Utilitários para manipulação e preparação de dados.
-* 💻 `src/`: Código-fonte principal da aplicação e lógica da arquitetura.
-* 🐳 `docker-compose.yml`: Configuração dos containers para o MongoDB.
-* 📋 `requirements.txt`: Bibliotecas necessárias (LangChain, PyMongo, etc.).
+O sistema utiliza **7 agentes especializados** orquestrados por um grafo de estados (`StateGraph`):
 
-⚠️ Nota sobre o Git: As pastas 📦 `backups/` e 🗄️ `data/mongo_db/` estão listadas no .gitignore para evitar o versionamento de arquivos pesados ou locais. Certifique-se de criá-las manualmente na raiz do projeto antes de iniciar a execução ou restaurar os backups.
+```
+User Query
+    │
+    ▼
+┌──────────┐
+│ Planner  │──► Decompõe a pergunta em passos de investigação
+└────┬─────┘
+     ▼
+┌──────────┐
+│  Router  │◄─── (loop) ◄── StepDefiner (próximo passo)
+└────┬─────┘                      ▲
+     ▼                            │
+┌──────────┐               ┌─────┴──────┐
+│Librarian │               │StepDefiner │
+└────┬─────┘               └─────▲──────┘
+     ▼                            │
+┌──────────┐               ┌─────┴──────┐
+│Extractor │               │ Validator  │── REJECTED → Router (retry)
+└────┬─────┘               └────────────┘
+     ▼                            ▲
+     └────────────────────────────┘
+                                  │ (finished)
+                                  ▼
+                            ┌──────────┐
+                            │  Editor  │──► Resposta Final
+                            └──────────┘
+```
+
+| Agente | Função |
+|--------|--------|
+| **Planner** | Decompõe a pergunta do usuário em passos de investigação |
+| **Router** | Direciona cada passo para a base de dados correta (commits, issues, emails) |
+| **Librarian** | Executa **Busca Híbrida** (Vetorial + BM25 → RRF) no VectorStore |
+| **Extractor** | Extrai evidências relevantes dos documentos recuperados |
+| **Validator** | Audita a qualidade da evidência (APPROVED / REJECTED) |
+| **StepDefiner** | Decide se avança para o próximo passo ou retorna ao Router |
+| **Editor** | Sintetiza a resposta final com base em todas as evidências coletadas |
+
+### Busca Híbrida (RRF)
+
+O **Librarian** combina dois métodos de recuperação:
+
+1. **Busca Vetorial** (ChromaDB + embeddings) — captura similaridade semântica
+2. **Busca Lexical** (BM25) — captura correspondência exata de termos
+
+Os resultados são fundidos com **Reciprocal Rank Fusion (RRF)**, que combina os rankings das duas buscas em um ranking unificado mais robusto:
+
+```
+RRF_score(doc) = Σ 1 / (k + rank_i(doc))
+```
+
+### Dual-LLM
+
+O sistema utiliza modelos diferentes otimizados por tarefa:
+
+- **Modelo Geral** (`openai/gpt-oss-120b`): Planner, Router, Validator, StepDefiner, Editor
+- **Modelo Extrator** (`llama-3.3-70b-versatile`): Extractor — melhor recall na leitura de chunks grandes
+
+## 📂 Estrutura do Projeto
+
+```
+InfoDev/
+├── App.py                           # Interface Streamlit
+├── avaliacaoRAGAS.py                # Pipeline de avaliação com RAGAS
+├── docker-compose.yml               # Container MongoDB
+├── scripts/
+│   ├── script_clean_shark_rich.py   # Extração e enriquecimento de dados
+│   ├── generate_testset.py          # Geração do testset com RAGAS
+│   ├── build_final_dataset.py       # Curadoria do dataset final (50 questões)
+│   └── diagnostico.py               # Diagnóstico do banco de dados
+├── src/
+│   ├── Config.py                    # Configurações centralizadas
+│   ├── Graph.py                     # Orquestração do grafo multiagente
+│   ├── GraphState.py                # Estado compartilhado entre agentes
+│   ├── VectorStoreManager.py        # Gerenciador de VectorStore + Busca Híbrida
+│   ├── Util.py                      # Utilitários
+│   └── Agents/
+│       ├── Planner.py
+│       ├── Router.py
+│       ├── Librarian.py
+│       ├── Extractor.py
+│       ├── Validator.py
+│       ├── StepDefiner.py
+│       └── Editor.py
+└── Playground.ipynb                 # Notebook de experimentação
+```
+
+> ⚠️ **Nota:** As pastas `backups/`, `data/mongo_db/`, `vectorstores/` e arquivos `.csv` estão no `.gitignore`. Certifique-se de criá-las manualmente e restaurar os backups antes de executar.
 
 ## 🛠️ Metodologia de Desenvolvimento
 
-O projeto InfoDev segue um fluxo estruturado em etapas sequenciais, partindo da curadoria de dados brutos até a implementação de uma inteligência multiagente.
+### 1. 📂 Preparação de Dados ✅
 
-### 1. 📂 Preparação de Dados (Concluído)
+Desde a aquisição da base bruta até a estruturação de um dataset enriquecido:
 
-Esta etapa compreende desde a aquisição da base bruta até a estruturação de um dataset enriquecido para alimentar o sistema RAG.
+1. **Aquisição e Restauração SmartSHARK 2.1** — Restaurado em instância Docker
+2. **Análise Exploratória (EDA)** — Distribuição e integridade dos dados
+3. **Seleção de Projetos Estratégicos** — Identificação dos projetos com mais relações (commits × issues × emails)
+4. **Extração e Enriquecimento** — Criação do `clean_shark` com collections enriquecidas (`rich_commits`, `rich_issues`, `rich_emails`)
+5. **Geração do Testset** — Dataset de avaliação gerado com RAGAS
 
-#### **1.1 📥 Aquisição e Restauração SmartSHARK 2.1**
+### 2. 🧠 Processamento e Vetorização ✅
 
-Download do **SmartSHARK 2.1**, restaurado em uma **instância Docker**.
+* **Embeddings especializados:** `jina-embeddings-v2-base-code` (commits) + `nomic-embed-text-v1.5` (issues/emails)
+* **Persistência:** ChromaDB com distância cosine
+* **Chunking:** `CHUNK_SIZE=1000`, `CHUNK_OVERLAP=300`
+* **Índice BM25:** Construído sob demanda (lazy initialization) para busca lexical
 
-#### **1.2 🔍 Análise Exploratória (EDA)**
+### 3. 🤖 Arquitetura Multiagente ✅
 
-**Explorative Data Analysis (EDA)** para compreender a distribuição dos dados e avaliar a integridade das informações contidas no dump.
+* **7 agentes** orquestrados com LangGraph (StateGraph)
+* **Busca Híbrida:** Vetorial + BM25 com Reciprocal Rank Fusion
+* **Dual-LLM:** Modelos especializados por tarefa
+* **Interface:** App Streamlit com feedback visual em tempo real
 
-#### **1.3 🎯 Seleção de Projetos Estratégicos**
+### 4. 📊 Avaliação com RAGAS ✅
 
-Script para **identificar os projetos com o maior número de relações** entre:
+Pipeline automatizado de avaliação (`avaliacaoRAGAS.py`) com métricas:
 
-* **Commits**;
-* **Issues**;
-* **Emails**.
+* **Faithfulness** — Fidelidade da resposta às evidências
+* **Answer Relevancy** — Relevância da resposta à pergunta
+* **Context Precision** — Precisão do contexto recuperado
+* **Context Recall** — Cobertura do contexto recuperado
 
-O **objetivo** é selecionar os projetos que ofereciam o melhor contexto para testar o sistema (informações relacionadas, contidas em fontes diferentes).
+Dataset final: **43 perguntas** curadas, avaliadas com LLM juiz independente (`llama-3.3-70b-versatile`).
 
-#### **1.4 🛠️ Extração e Enriquecimento (Criação do Clean Shark)**
+## 🚀 Como Executar
 
-Criação de script para a **extração dos dados** selecionados, aplicando técnicas de manipulação para enriquecer os documentos. O objetivo foi consolidar informações dispersas em um formato mais semântico, separados por collections (`rich_commits`, `rich_issues`, `rich_emails`).
+### Pré-requisitos
 
-#### **1.5 🧪 Geração do Testset**
+* Python 3.10+
+* Docker (para MongoDB)
+* Chave de API: `GROQ_API_KEY` no arquivo `.env`
 
-O script `generate_testset.py` cria o conjunto de dados de teste para validar se a arquitetura multiagente está recuperando as informações corretas após a implementação.
+### Setup
 
-### 2. 🧠 Processamento e Vetorização (Próximos Passos)
+```bash
+# 1. Criar e ativar o ambiente virtual
+python -m venv .venv
+.venv\Scripts\activate  # Windows
 
-* **🔢 Criação de Vetores Textuais:** Transformação do dataset `clean_shark` em representações matemáticas (embeddings).
-* **💾 Persistência Vetorial:** Armazenamento desses vetores em um banco de dados especializado para busca semântica, integrando com o volume de dados do MongoDB.
+# 2. Instalar dependências
+pip install -r requirements.txt
 
-### 3. 🤖 Arquitetura de Agentes (Em Planejamento)
+# 3. Subir o MongoDB
+docker-compose up -d
 
-* **🕸️ Orquestração com LangGraph:** Desenvolvimento de uma estrutura de grafos para gerenciar ciclos de raciocínio e tomada de decisão entre múltiplos agentes.
-* **🔗 Integração LangChain:** Uso de cadeias para conectar os modelos de linguagem (LLMs) à base vetorial e ferramentas externas.
+# 4. Restaurar backup (se necessário)
+# mongorestore --archive=backups/clean_shark_backup.archive --db=clean_shark
 
-## 📊 Análise de Resultados
-
-Ao final, os resultados serão avaliados comparando as respostas da arquitetura de agentes contra o **Testset** gerado inicialmente, medindo métricas de fidelidade e relevância da informação recuperada.
+# 5. Executar a interface
+streamlit run App.py
+```
